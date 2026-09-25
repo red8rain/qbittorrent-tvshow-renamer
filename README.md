@@ -1,8 +1,10 @@
 # Collections generated using AI
 
+The collections was craeted using an AI agent.
+
 # qBittorrent TV Renamer — Postman Collections
 
-Two Postman collections that rename torrent folder and episode files via the qBittorrent Web API.
+Two Postman collections that rename torrent folder and episode files via the qBittorrent Web API for use with Jellyfin.
 
 ---
 
