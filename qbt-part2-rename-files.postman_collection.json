@@ -1,0 +1,295 @@
+{
+  "info": {
+    "name": "qBittorrent TV Renamer — Part 2: Rename Files",
+    "_postman_id": "qbt-tv-part2-rename-files",
+    "description": "Part 2 of 2 — re-fetches the torrent file list (now under the renamed root from Part 1), builds a rename queue, then loops renameFile for every episode.\n\nCONFIG: Edit the collection variables before running:\n  qbtBaseUrl   — e.g. http://localhost:8080\n  torrentHash  — same hash used in Part 1\n  showName     — same show name used in Part 1 (e.g. Arcana)\n  seasonFolder — season sub-folder (e.g. Season 01)\n  mode         — \"dry\" to preview only (default) | \"apply\" to actually rename files\n\nIMPORTANT: Run this collection via the Collection Runner.\nIn dry mode, request 3 prints the full rename plan and stops — request 4 is skipped.\nChange mode to \"apply\" and re-run to commit all renames.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "qbtBaseUrl",
+      "value": "http://localhost:8080",
+      "description": "Base URL of qBittorrent Web UI (no trailing slash)"
+    },
+    {
+      "key": "torrentHash",
+      "value": "",
+      "description": "Hash of the torrent to rename (REQUIRED — same as Part 1)"
+    },
+    {
+      "key": "showName",
+      "value": "Arcana",
+      "description": "Show name — must match what was used in Part 1 (it is now the root folder name)"
+    },
+    {
+      "key": "seasonFolder",
+      "value": "Season 01",
+      "description": "Season sub-folder placed inside the root (e.g. Season 01)"
+    },
+    {
+      "key": "fileRenameQueue",
+      "value": "[]",
+      "description": "Auto-populated by request 3 — JSON array of {oldPath, newPath} objects"
+    },
+    {
+      "key": "fileRenameIndex",
+      "value": "0",
+      "description": "Loop counter managed automatically by request 4 — do not edit"
+    },
+    {
+      "key": "currentOldPath",
+      "value": "",
+      "description": "Current file oldPath for the active loop iteration — do not edit"
+    },
+    {
+      "key": "currentNewPath",
+      "value": "",
+      "description": "Current file newPath for the active loop iteration — do not edit"
+    },
+    {
+      "key": "mode",
+      "value": "dry",
+      "description": "\"dry\" = preview only, prints plan and stops (default) | \"apply\" = actually rename all files"
+    }
+  ],
+  "item": [
+    {
+      "name": "3. Get Torrent Files (build rename queue)",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "// Reset loop state before rebuilding the queue",
+              "pm.collectionVariables.set('fileRenameIndex', '0');",
+              "pm.collectionVariables.set('fileRenameQueue', '[]');",
+              "pm.collectionVariables.set('currentOldPath', '');",
+              "pm.collectionVariables.set('currentNewPath', '');",
+              "",
+              "const hash = pm.collectionVariables.get('torrentHash');",
+              "if (!hash || !hash.trim()) {",
+              "    throw new Error('Set the torrentHash collection variable before running.');",
+              "}"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Response is 200 OK', () => pm.response.to.have.status(200));",
+              "",
+              "const files = pm.response.json();",
+              "",
+              "pm.test('File list is non-empty', () => {",
+              "    pm.expect(Array.isArray(files) && files.length > 0).to.be.true;",
+              "});",
+              "",
+              "if (!Array.isArray(files) || files.length === 0) {",
+              "    throw new Error('Empty or invalid file list — check torrentHash.');",
+              "}",
+              "",
+              "const showName     = pm.collectionVariables.get('showName');",
+              "const seasonFolder = pm.collectionVariables.get('seasonFolder');",
+              "",
+              "// Helper: extract SxxExx from a filename",
+              "function episodeFromBasename(basename) {",
+              "    const m = basename.match(/S(\\d{1,2})E(\\d{1,2})/i);",
+              "    if (!m) return null;",
+              "    return {",
+              "        season:  m[1].padStart(2, '0'),",
+              "        episode: m[2].padStart(2, '0')",
+              "    };",
+              "}",
+              "",
+              "// Re-detect root from the current (post-Part-1) paths; fall back to showName",
+              "const roots = new Set();",
+              "for (const f of files) {",
+              "    const i = f.name.indexOf('/');",
+              "    if (i !== -1) roots.add(f.name.slice(0, i));",
+              "}",
+              "const currentRoot = roots.size === 1 ? [...roots][0] : showName;",
+              "",
+              "// Build the rename queue",
+              "const queue   = [];",
+              "const skipped = [];",
+              "",
+              "for (const f of files) {",
+              "    const rel  = f.name;",
+              "    const base = rel.split('/').pop();",
+              "",
+              "    // Skip .nfo sidecar files (mirrors original script behaviour)",
+              "    if (/\\.nfo$/i.test(base)) {",
+              "        skipped.push({ reason: '.nfo — skipped', path: rel });",
+              "        continue;",
+              "    }",
+              "",
+              "    const ep = episodeFromBasename(base);",
+              "    if (!ep) {",
+              "        skipped.push({ reason: 'no SxxExx pattern found', path: rel });",
+              "        continue;",
+              "    }",
+              "",
+              "    const ext     = base.includes('.') ? base.slice(base.lastIndexOf('.') + 1) : '';",
+              "    const newFile = showName + ' S' + ep.season + 'E' + ep.episode + '.' + ext;",
+              "    const newPath = currentRoot + '/' + seasonFolder + '/' + newFile;",
+              "",
+              "    queue.push({ oldPath: rel, newPath: newPath });",
+              "}",
+              "",
+              "pm.collectionVariables.set('fileRenameQueue', JSON.stringify(queue));",
+              "pm.collectionVariables.set('fileRenameIndex', '0');",
+              "",
+              "pm.test('At least one episode queued for rename', () => {",
+              "    pm.expect(queue.length).to.be.greaterThan(0,",
+              "        'No SxxExx episode files found — check show files or season pattern.');",
+              "});",
+              "",
+              "console.log('Detected root folder :', currentRoot);",
+              "console.log('Season sub-folder    :', seasonFolder);",
+              "console.log('Episodes queued      :', queue.length);",
+              "console.log('Skipped              :', skipped.length);",
+              "if (skipped.length) {",
+              "    console.log(JSON.stringify(skipped, null, 2));",
+              "}",
+              "console.log('');",
+              "console.log('Full rename plan:');",
+              "console.log(JSON.stringify(queue, null, 2));",
+              "console.log('');",
+              "",
+              "const mode = (pm.collectionVariables.get('mode') || 'dry').trim().toLowerCase();",
+              "",
+              "if (mode === 'dry') {",
+              "    console.log('MODE: DRY RUN — no files will be renamed.');",
+              "    console.log('Review the plan above, then change mode to \"apply\" and re-run.');",
+              "    pm.execution.setNextRequest(null);",
+              "} else {",
+              "    console.log('MODE: APPLY — starting file renames now...');",
+              "}"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{qbtBaseUrl}}/api/v2/torrents/files?hash={{torrentHash}}",
+          "host": ["{{qbtBaseUrl}}"],
+          "path": ["api", "v2", "torrents", "files"],
+          "query": [
+            {
+              "key": "hash",
+              "value": "{{torrentHash}}"
+            }
+          ]
+        },
+        "description": "Re-fetches the file list now that the root folder has already been renamed by Part 1. Builds the full rename queue (stored in {{fileRenameQueue}}) and prints the plan to the console before any file is touched. Resets the loop counter to 0."
+      }
+    },
+    {
+      "name": "4. Rename Episode File (loop)",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const queue = JSON.parse(pm.collectionVariables.get('fileRenameQueue') || '[]');",
+              "const index = parseInt(pm.collectionVariables.get('fileRenameIndex') || '0', 10);",
+              "",
+              "if (queue.length === 0) {",
+              "    throw new Error('fileRenameQueue is empty — run request 3 first to build the queue.');",
+              "}",
+              "",
+              "if (index >= queue.length) {",
+              "    // Past the end — test script will stop the runner",
+              "    pm.collectionVariables.set('currentOldPath', '');",
+              "    pm.collectionVariables.set('currentNewPath', '');",
+              "} else {",
+              "    const step = queue[index];",
+              "    pm.collectionVariables.set('currentOldPath', step.oldPath);",
+              "    pm.collectionVariables.set('currentNewPath', step.newPath);",
+              "    console.log('[' + (index + 1) + '/' + queue.length + '] Renaming: ' + step.oldPath);",
+              "    console.log('                -> ' + step.newPath);",
+              "}"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const queue = JSON.parse(pm.collectionVariables.get('fileRenameQueue') || '[]');",
+              "let index   = parseInt(pm.collectionVariables.get('fileRenameIndex') || '0', 10);",
+              "",
+              "// Guard: if somehow past the end, stop immediately",
+              "if (index >= queue.length) {",
+              "    console.log('Nothing left in queue — stopping runner.');",
+                  "    pm.execution.setNextRequest(null);",
+              "    return;",
+              "}",
+              "",
+              "pm.test('[' + (index + 1) + '/' + queue.length + '] renameFile succeeded (200 OK)', () => {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "// Advance the counter",
+              "index++;",
+              "pm.collectionVariables.set('fileRenameIndex', String(index));",
+              "",
+              "if (index < queue.length) {",
+              "    // More files — loop back to this same request",
+              "    pm.execution.setNextRequest('4. Rename Episode File (loop)');",
+                  "} else {",
+                  "    // All done",
+                  "    console.log('');",
+                  "    console.log('PART 2 COMPLETE — all ' + queue.length + ' episode files renamed.');",
+                  "    console.log('Refresh the Content tab in qBittorrent if paths look stale.');",
+                  "    pm.execution.setNextRequest(null);",
+              "}"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/x-www-form-urlencoded"
+          }
+        ],
+        "body": {
+          "mode": "urlencoded",
+          "urlencoded": [
+            {
+              "key": "hash",
+              "value": "{{torrentHash}}",
+              "description": "Torrent hash"
+            },
+            {
+              "key": "oldPath",
+              "value": "{{currentOldPath}}",
+              "description": "Current file path — managed automatically by the loop"
+            },
+            {
+              "key": "newPath",
+              "value": "{{currentNewPath}}",
+              "description": "New file path — managed automatically by the loop"
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{qbtBaseUrl}}/api/v2/torrents/renameFile",
+          "host": ["{{qbtBaseUrl}}"],
+          "path": ["api", "v2", "torrents", "renameFile"]
+        },
+        "description": "Renames one episode file per execution. The pre-request script loads the current item from {{fileRenameQueue}} using {{fileRenameIndex}} as the cursor. The test script increments the index and calls postman.setNextRequest() to loop back until the queue is exhausted.\n\nMUST be run via the Collection Runner — the Send button will only rename one file."
+      }
+    }
+  ]
+}

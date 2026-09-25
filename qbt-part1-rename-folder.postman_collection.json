@@ -1,0 +1,197 @@
+{
+  "info": {
+    "name": "qBittorrent TV Renamer — Part 1: Rename Folder",
+    "_postman_id": "qbt-tv-part1-rename-folder",
+    "description": "Part 1 of 2 — detects the existing root folder of a torrent and renames it to your show name.\n\nCONFIG: Edit the collection variables before running:\n  qbtBaseUrl   — e.g. http://localhost:8080\n  torrentHash  — the torrent hash from the qBittorrent Web UI\n  showName     — new root folder name (e.g. Arcana)\n  mode         — \"dry\" to preview only (default) | \"apply\" to actually rename\n\nRun request 1 first, then request 2.\nIn dry mode request 2 is skipped automatically — change mode to \"apply\" to commit.\nAfter both succeed, run Part 2 to rename the episode files.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "qbtBaseUrl",
+      "value": "http://localhost:8080",
+      "description": "Base URL of qBittorrent Web UI (no trailing slash)"
+    },
+    {
+      "key": "torrentHash",
+      "value": "",
+      "description": "Hash of the torrent to rename (REQUIRED — copy from qBittorrent Web UI)"
+    },
+    {
+      "key": "showName",
+      "value": "Arcana",
+      "description": "New root folder name (e.g. Arcana)"
+    },
+    {
+      "key": "oldRootFolder",
+      "value": "",
+      "description": "Auto-populated by request 1 — do not edit manually"
+    },
+    {
+      "key": "mode",
+      "value": "dry",
+      "description": "\"dry\" = preview only, no changes made (default) | \"apply\" = actually rename the folder"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Get Torrent Files (detect root folder)",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const hash = pm.collectionVariables.get('torrentHash');",
+              "if (!hash || !hash.trim()) {",
+              "    throw new Error('Set the torrentHash collection variable before running.');",
+              "}"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Response is 200 OK', () => pm.response.to.have.status(200));",
+              "",
+              "const files = pm.response.json();",
+              "",
+              "pm.test('File list is non-empty', () => {",
+              "    pm.expect(Array.isArray(files) && files.length > 0).to.be.true;",
+              "});",
+              "",
+              "if (!Array.isArray(files) || files.length === 0) {",
+              "    throw new Error('Empty or invalid file list — check torrentHash.');",
+              "}",
+              "",
+              "// Detect single top-level (root) folder",
+              "const roots = new Set();",
+              "for (const f of files) {",
+              "    const i = f.name.indexOf('/');",
+              "    if (i !== -1) roots.add(f.name.slice(0, i));",
+              "}",
+              "",
+              "pm.test('Single root folder detected', () => {",
+              "    pm.expect(roots.size).to.equal(1,",
+              "        'Expected 1 root folder but found ' + roots.size + ': ' + [...roots].join(', '));",
+              "});",
+              "",
+              "const rootOld = roots.size === 1 ? [...roots][0] : '';",
+              "pm.collectionVariables.set('oldRootFolder', rootOld);",
+              "",
+              "console.log('Detected root folder :', rootOld);",
+              "console.log('Will rename to       :', pm.collectionVariables.get('showName'));",
+              "console.log('Total files          :', files.length);",
+              "console.log('');",
+              "",
+              "const mode = (pm.collectionVariables.get('mode') || 'dry').trim().toLowerCase();",
+              "",
+              "if (mode === 'dry') {",
+              "    console.log('MODE: DRY RUN — no changes will be made.');",
+              "    console.log('Folder \"' + rootOld + '\" would be renamed to \"' + pm.collectionVariables.get('showName') + '\"');",
+              "    console.log('Change mode to \"apply\" to commit.');",
+              "    pm.execution.setNextRequest(null);",
+              "} else {",
+              "    console.log('MODE: APPLY — proceeding to rename folder.');",
+              "    console.log('Ready — run request 2: Rename Root Folder.');",
+              "}"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{qbtBaseUrl}}/api/v2/torrents/files?hash={{torrentHash}}",
+          "host": ["{{qbtBaseUrl}}"],
+          "path": ["api", "v2", "torrents", "files"],
+          "query": [
+            {
+              "key": "hash",
+              "value": "{{torrentHash}}"
+            }
+          ]
+        },
+        "description": "Fetches the full file list for the torrent and auto-detects the existing root folder name. The result is stored in the {{oldRootFolder}} collection variable for use by request 2."
+      }
+    },
+    {
+      "name": "2. Rename Root Folder",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const oldRoot = pm.collectionVariables.get('oldRootFolder');",
+              "const newRoot = pm.collectionVariables.get('showName');",
+              "",
+              "if (!oldRoot) {",
+              "    throw new Error('oldRootFolder is empty — run request 1 first.');",
+              "}",
+              "if (oldRoot === newRoot) {",
+              "    console.warn('Root folder is already named \"' + newRoot + '\" — rename will be a no-op.');",
+              "}",
+              "",
+              "console.log('Renaming folder: \"' + oldRoot + '\" -> \"' + newRoot + '\"');"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Folder renamed successfully (200 OK)', () => pm.response.to.have.status(200));",
+              "",
+              "const oldRoot = pm.collectionVariables.get('oldRootFolder');",
+              "const newRoot = pm.collectionVariables.get('showName');",
+              "",
+              "console.log('Folder renamed: \"' + oldRoot + '\" -> \"' + newRoot + '\"');",
+              "console.log('');",
+              "console.log('PART 1 COMPLETE.');",
+              "console.log('Now import and run Part 2 (qbt-part2-rename-files) to rename episode files.');"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/x-www-form-urlencoded"
+          }
+        ],
+        "body": {
+          "mode": "urlencoded",
+          "urlencoded": [
+            {
+              "key": "hash",
+              "value": "{{torrentHash}}",
+              "description": "Torrent hash"
+            },
+            {
+              "key": "oldPath",
+              "value": "{{oldRootFolder}}",
+              "description": "Current root folder name (auto-set by request 1)"
+            },
+            {
+              "key": "newPath",
+              "value": "{{showName}}",
+              "description": "New root folder name"
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{qbtBaseUrl}}/api/v2/torrents/renameFolder",
+          "host": ["{{qbtBaseUrl}}"],
+          "path": ["api", "v2", "torrents", "renameFolder"]
+        },
+        "description": "Renames the root folder from {{oldRootFolder}} (detected in request 1) to {{showName}}. Must be run after request 1 has populated {{oldRootFolder}}."
+      }
+    }
+  ]
+}
