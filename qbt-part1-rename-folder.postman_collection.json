@@ -2,7 +2,7 @@
   "info": {
     "name": "qBittorrent TV Renamer — Part 1: Rename Folder",
     "_postman_id": "qbt-tv-part1-rename-folder",
-    "description": "Part 1 of 2 — detects the existing root folder of a torrent and renames it to your show name.\n\nCONFIG: Edit the collection variables before running:\n  qbtBaseUrl   — e.g. http://localhost:8080\n  torrentHash  — the torrent hash from the qBittorrent Web UI\n  showName     — new root folder name (e.g. Arcana)\n  mode         — \"dry\" to preview only (default) | \"apply\" to actually rename\n\nRun request 1 first, then request 2.\nIn dry mode request 2 is skipped automatically — change mode to \"apply\" to commit.\nAfter both succeed, run Part 2 to rename the episode files.",
+    "description": "Part 1 of 2 — detects the existing root folder of a torrent and renames it to your show name.\n\nCONFIG: Edit the collection variables before running:\n  qbtBaseUrl   — e.g. http://localhost:8080\n  username     — qBittorrent Web UI username\n  password     — qBittorrent Web UI password\n  torrentHash  — the torrent hash from the qBittorrent Web UI\n  showName     — new root folder name (e.g. Arcana)\n  mode         — \"dry\" to preview only (default) | \"apply\" to actually rename\n\nEach request logs in via the Web API before running.\nRun request 1 first, then request 2.\nIn dry mode request 2 is skipped automatically — change mode to \"apply\" to commit.\nAfter both succeed, run Part 2 to rename the episode files.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -10,6 +10,17 @@
       "key": "qbtBaseUrl",
       "value": "http://localhost:8080",
       "description": "Base URL of qBittorrent Web UI (no trailing slash)"
+    },
+    {
+      "key": "username",
+      "value": "",
+      "description": "qBittorrent Web UI username (REQUIRED)"
+    },
+    {
+      "key": "password",
+      "value": "",
+      "type": "secret",
+      "description": "qBittorrent Web UI password (REQUIRED)"
     },
     {
       "key": "torrentHash",
@@ -30,6 +41,52 @@
       "key": "mode",
       "value": "dry",
       "description": "\"dry\" = preview only, no changes made (default) | \"apply\" = actually rename the folder"
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "const baseUrl = (pm.collectionVariables.get('qbtBaseUrl') || '').replace(/\\/+$/, '');",
+          "const username = pm.collectionVariables.get('username');",
+          "const password = pm.collectionVariables.get('password');",
+          "",
+          "if (!baseUrl) {",
+          "    throw new Error('Set the qbtBaseUrl collection variable before running.');",
+          "}",
+          "if (!username || !String(username).trim()) {",
+          "    throw new Error('Set the username collection variable before running.');",
+          "}",
+          "if (password === undefined || password === null || password === '') {",
+          "    throw new Error('Set the password collection variable before running.');",
+          "}",
+          "",
+          "const loginRequest = {",
+          "    url: baseUrl + '/api/v2/auth/login',",
+          "    method: 'POST',",
+          "    header: { 'Content-Type': 'application/x-www-form-urlencoded' },",
+          "    body: {",
+          "        mode: 'urlencoded',",
+          "        urlencoded: [",
+          "            { key: 'username', value: String(username) },",
+          "            { key: 'password', value: String(password) }",
+          "        ]",
+          "    }",
+          "};",
+          "",
+          "pm.sendRequest(loginRequest, (err, res) => {",
+          "    if (err) {",
+          "        throw new Error('Login request failed: ' + err.message);",
+          "    }",
+          "    const body = res.text();",
+          "    if (res.code !== 200 || body !== 'Ok.') {",
+          "        throw new Error('qBittorrent login failed (' + res.code + '): ' + body);",
+          "    }",
+          "});"
+        ]
+      }
     }
   ],
   "item": [
