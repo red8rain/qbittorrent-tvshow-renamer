@@ -20,8 +20,8 @@ Two Postman collections that rename torrent folder and episode files via the qBi
 ## Prerequisites
 
 - qBittorrent with Web UI enabled
-- Postman desktop app
-- An active qBittorrent Web UI session open in your browser (Postman shares the session cookie automatically — no separate login needed)
+- Postman (desktop or web)
+- Your qBittorrent Web UI username and password
 
 ---
 
@@ -40,6 +40,8 @@ Each collection has its own variables tab. Edit them before running.
 | Variable | Description | Example |
 |----------|-------------|---------|
 | `qbtBaseUrl` | Base URL of the qBittorrent Web UI (no trailing slash) | `http://127.0.0.1:8080` |
+| `username` | qBittorrent Web UI username | `admin` |
+| `password` | qBittorrent Web UI password | *(your password)* |
 | `torrentHash` | Hash of the torrent to rename — copy from the Web UI | `8e16f20466c52fc4...` |
 | `showName` | New root folder name and episode name prefix | `Sousou no Frieren` |
 | `mode` | `dry` to preview, `apply` to commit | `dry` |
@@ -129,9 +131,11 @@ Frieren.Beyond.Journeys.End.AAC.WEBRip.TV.GroupName/Frieren.Beyond.Journeys.End.
 
 ## Authentication
 
-Postman uses the `SID` session cookie from your active qBittorrent Web UI browser session. No username or password configuration is needed **as long as you have the Web UI open in your browser**.
+Each collection logs in automatically before every request. Set the **`username`** and **`password`** collection variables to match your qBittorrent Web UI credentials (same values you use in the browser).
 
-If you get `403` errors, refresh the Web UI login page in your browser to renew the session cookie, then retry.
+The collection pre-request script calls `POST /api/v2/auth/login`, stores the `SID` session cookie in Postman’s cookie jar, and then runs the API request. You do not need a separate browser session open.
+
+If you get **`403 Forbidden`**, check `qbtBaseUrl` (must match how you reach the Web UI, including host and port), username, and password. A failed login stops the run with an error in the Postman console instead of sending unauthenticated API calls.
 
 ---
 

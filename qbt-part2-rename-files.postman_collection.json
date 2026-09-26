@@ -2,7 +2,7 @@
   "info": {
     "name": "qBittorrent TV Renamer — Part 2: Rename Files",
     "_postman_id": "qbt-tv-part2-rename-files",
-    "description": "Part 2 of 2 — re-fetches the torrent file list (now under the renamed root from Part 1), builds a rename queue, then loops renameFile for every episode.\n\nCONFIG: Edit the collection variables before running:\n  qbtBaseUrl   — e.g. http://localhost:8080\n  torrentHash  — same hash used in Part 1\n  showName     — same show name used in Part 1 (e.g. Arcana)\n  seasonFolder — season sub-folder (e.g. Season 01)\n  mode         — \"dry\" to preview only (default) | \"apply\" to actually rename files\n\nIMPORTANT: Run this collection via the Collection Runner.\nIn dry mode, request 3 prints the full rename plan and stops — request 4 is skipped.\nChange mode to \"apply\" and re-run to commit all renames.",
+    "description": "Part 2 of 2 — re-fetches the torrent file list (now under the renamed root from Part 1), builds a rename queue, then loops renameFile for every episode.\n\nCONFIG: Edit the collection variables before running:\n  qbtBaseUrl   — e.g. http://localhost:8080\n  username     — qBittorrent Web UI username\n  password     — qBittorrent Web UI password\n  torrentHash  — same hash used in Part 1\n  showName     — same show name used in Part 1 (e.g. Arcana)\n  seasonFolder — season sub-folder (e.g. Season 01)\n  mode         — \"dry\" to preview only (default) | \"apply\" to actually rename files\n\nEach request logs in via the Web API before running.\nIMPORTANT: Run this collection via the Collection Runner.\nIn dry mode, request 3 prints the full rename plan and stops — request 4 is skipped.\nChange mode to \"apply\" and re-run to commit all renames.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -10,6 +10,17 @@
       "key": "qbtBaseUrl",
       "value": "http://localhost:8080",
       "description": "Base URL of qBittorrent Web UI (no trailing slash)"
+    },
+    {
+      "key": "username",
+      "value": "",
+      "description": "qBittorrent Web UI username (REQUIRED)"
+    },
+    {
+      "key": "password",
+      "value": "",
+      "type": "secret",
+      "description": "qBittorrent Web UI password (REQUIRED)"
     },
     {
       "key": "torrentHash",
@@ -50,6 +61,52 @@
       "key": "mode",
       "value": "dry",
       "description": "\"dry\" = preview only, prints plan and stops (default) | \"apply\" = actually rename all files"
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "const baseUrl = (pm.collectionVariables.get('qbtBaseUrl') || '').replace(/\\/+$/, '');",
+          "const username = pm.collectionVariables.get('username');",
+          "const password = pm.collectionVariables.get('password');",
+          "",
+          "if (!baseUrl) {",
+          "    throw new Error('Set the qbtBaseUrl collection variable before running.');",
+          "}",
+          "if (!username || !String(username).trim()) {",
+          "    throw new Error('Set the username collection variable before running.');",
+          "}",
+          "if (password === undefined || password === null || password === '') {",
+          "    throw new Error('Set the password collection variable before running.');",
+          "}",
+          "",
+          "const loginRequest = {",
+          "    url: baseUrl + '/api/v2/auth/login',",
+          "    method: 'POST',",
+          "    header: { 'Content-Type': 'application/x-www-form-urlencoded' },",
+          "    body: {",
+          "        mode: 'urlencoded',",
+          "        urlencoded: [",
+          "            { key: 'username', value: String(username) },",
+          "            { key: 'password', value: String(password) }",
+          "        ]",
+          "    }",
+          "};",
+          "",
+          "pm.sendRequest(loginRequest, (err, res) => {",
+          "    if (err) {",
+          "        throw new Error('Login request failed: ' + err.message);",
+          "    }",
+          "    const body = res.text();",
+          "    if (res.code !== 200 || body !== 'Ok.') {",
+          "        throw new Error('qBittorrent login failed (' + res.code + '): ' + body);",
+          "    }",
+          "});"
+        ]
+      }
     }
   ],
   "item": [
